@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Constitution of Pakistan — Interactive Portal</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+
+<div id="app">
+  <!-- Topbar Header -->
+  <header id="topbar">
+    <div class="brand" onclick="renderDashboard()">
+      <h1>Constitution of Pakistan</h1>
+      <span class="badge">1973 (as amended 2025)</span>
+    </div>
+    <div class="search-wrapper">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+      </svg>
+      <input id="global-search" type="text" placeholder="Search actors, typologies, articles…" autocomplete="off" />
+    </div>
+  </header>
+
+  <!-- Sidebar Navigation -->
+  <aside id="sidebar">
+    <nav class="sidebar-tabs">
+      <button id="tab-entities" class="nav-tab active" onclick="switchSidebarTab('entities')">🏛️ By Actor</button>
+      <button id="tab-typologies" class="nav-tab" onclick="switchSidebarTab('typologies')">⚖️ Concepts</button>
+      <button id="tab-themes" class="nav-tab" onclick="switchSidebarTab('themes')">📑 Domains</button>
+      <button id="tab-articles" class="nav-tab" onclick="switchSidebarTab('articles')">📖 All Articles</button>
+    </nav>
+    <div id="sidebar-content" class="sidebar-content"></div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main id="main">
+    <div id="main-inner"></div>
+  </main>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Directories to ignore
+cleaning/
+first\ archive\ of\ the\ data/
+itterations/
+test/
+
+# Python cache & temporary files (recommended)
+__pycache__/
+*.py[cod]
+.DS_Store
