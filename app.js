@@ -16,6 +16,33 @@ const ENUM_TYPOLOGY = {
   'transitional_validation': 'Transitional & Historical Validation'
 };
 
+const ENUM_TYPOLOGY_OVERVIEW = {
+  'substantive_power': 'These clauses hand someone the authority to act — to decide, appoint, order, or approve something.',
+  'duty_obligation': 'These clauses say "shall" — they command an actor to do something, with no room to choose otherwise.',
+  'fundamental_right': 'These clauses give ordinary people or citizens an entitlement the state must respect.',
+  'declaratory_policy': 'These clauses state a goal or principle rather than a rule — often not enforceable in court on their own.',
+  'procedural': 'These clauses set out the mechanics of a process: timelines, voting steps, how a bill or budget moves.',
+  'definitional_interpretative': 'These clauses define a word, term, calendar, or how another clause should be read.',
+  'creation_or_definition': 'These clauses formally establish a body, office, or court that didn\'t exist before.',
+  'checks_or_limits': 'These clauses restrict a power already granted elsewhere — a cap, a condition, or a disqualification.',
+  'ouster_immunity': 'These clauses block courts from reviewing a decision, or shield an actor from legal consequences.',
+  'transitional_validation': 'These clauses validate something that already happened, or bridge the gap during a change in law.'
+};
+
+const ENUM_THEME_OVERVIEW = {
+  'fundamental_rights': 'Civil liberties and legal safeguards belonging to individuals — equality, speech, fair trial, and similar protections.',
+  'general_executive': 'The President, Prime Minister, Cabinets, and Governors — how the executive branch is run.',
+  'general_legislative': 'Parliament, the National Assembly, the Senate, and Provincial Assemblies — how laws get made.',
+  'judicial_process': 'The courts: how judges are appointed, and what powers courts have to hear and decide cases.',
+  'federalism_devolution': 'How power and resources are split between the federal government and the provinces.',
+  'public_finance_taxation': 'Government money — budgets, funds, borrowing, and how revenue is shared.',
+  'elections_democracy': 'How elections are run, who can vote, and the rules political parties and candidates follow.',
+  'national_security_emergency': 'The armed forces, treason, and what happens when a state of emergency is declared.',
+  'islamic_injunctions': 'Provisions tying law to Islamic principles, including the Council of Islamic Ideology and Federal Shariat Court.',
+  'civil_service_administration': 'The government workforce — public service commissions and how civil servants are managed.',
+  'meta_law_interpretation': 'Ground rules for the Constitution itself — definitions, when it takes effect, and how repeals work.'
+};
+
 const ENUM_THEME = {
   'fundamental_rights': 'Fundamental Rights',
   'general_executive': 'The Executive',
@@ -186,10 +213,16 @@ function buildSidebar(filterText = '') {
         createSectionHeader(container, currentChapter);
       }
       
+      const purpose = art.article_summary && art.article_summary.core_purpose ? art.article_summary.core_purpose : '';
       const row = document.createElement('div');
-      row.className = 'ent-item'; 
+      row.className = 'ent-item art-row';
       row.dataset.id = `art_${art.article_number}`;
-      row.innerHTML = `<span class="art-num-pill">Art. ${art.article_number}</span><span style="flex:1; margin-left:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${art.original_title || ''}</span>`;
+      row.innerHTML = `
+        <span class="art-num-pill">Art. ${art.article_number}</span>
+        <span style="flex:1; margin-left:8px; min-width:0;">
+          <span class="art-row-title">${art.original_title || ''}</span>
+          ${purpose ? `<span class="art-row-purpose">${purpose}</span>` : ''}
+        </span>`;
       row.onclick = () => renderArticleView(art.article_number);
       container.appendChild(row);
     });
@@ -316,30 +349,75 @@ function renderTagView(tagType, tagKey, tagLabel) {
   const main = document.getElementById('main-inner');
   const links = getClausesByTag(tagType, tagKey);
 
+  const overviewMap = tagType === 'typology' ? ENUM_TYPOLOGY_OVERVIEW : ENUM_THEME_OVERVIEW;
+  const overviewText = overviewMap[tagKey] || `The following clauses are classified under this ${tagType === 'typology' ? 'legal concept' : 'thematic domain'}.`;
+
   let html = `
     <div class="breadcrumb"><a class="back-btn" onclick="handleBackNavigation()">← Dashboard</a><span class="sep">/</span><span>${tagType === 'typology' ? 'Legal Concept' : 'Subject Domain'}</span></div>
     <h1 class="page-title">${tagLabel}</h1>
-    <p class="entity-overview">The following clauses are classified under this ${tagType === 'typology' ? 'legal concept' : 'thematic domain'}.</p>
+    <p class="entity-overview">${overviewText}</p>
   `;
 
   if (!links.length) {
     html += `<div class="empty-state"><p>No provisions map to this category yet.</p></div>`;
   } else {
-    html += `<div class="category-group">`;
+    // Resolve each link to its article + clause, then group by theme (or by chapter Part
+    // when we're already inside a theme view) so the reader sees labeled buckets instead
+    // of one long undifferentiated list.
+    const resolved = [];
     links.forEach(link => {
       const art = findArticle(link.article);
       const clause = art ? findClauseRecursive(art.clauses, link.clause_id) : null;
       if (!art || !clause) return;
-      
-      const refStr = `Art. ${link.article}${clause.id !== '0' ? `(${clause.id})` : ''}`;
-      const bulletLine = clause.index_bullet || (clause.text.slice(0, 95) + '…');
-      html += `
-        <div class="provision-bullet" onclick="setPreviousView('tag', '${tagType}', '${tagKey}', '${tagLabel}'); renderArticleView('${link.article}', '${link.clause_id}')">
-          <span class="provision-ref">${refStr}</span>
-          <span class="provision-text">${bulletLine}</span>
-        </div>`;
+      resolved.push({ art, clause, link });
     });
-    html += `</div>`;
+
+    // Domain (theme) pages group by typology — what kind of provision it is (a power, a
+    // duty, a right, a limit...). Grouping by chapter here would be circular, since a Part
+    // of the constitution is already close to a theme. Typology pages group by theme instead,
+    // to show which subject areas rely on that kind of provision most.
+    const groupByTypology = tagType === 'theme';
+    const groups = {};
+    const groupOrder = [];
+
+    resolved.forEach(({ art, clause }) => {
+      let groupKey, groupLabel;
+      if (groupByTypology) {
+        const typKey = (clause.clause_typology && clause.clause_typology[0]) || 'procedural';
+        groupLabel = ENUM_TYPOLOGY[typKey] || 'Other';
+        groupKey = typKey;
+      } else {
+        // Grouping a typology view by theme surfaces which subject areas rely on this
+        // kind of provision most.
+        const themeKey = (clause.clause_theme && clause.clause_theme[0]) || 'meta_law_interpretation';
+        groupLabel = ENUM_THEME[themeKey] || 'Other';
+        groupKey = themeKey;
+      }
+      if (!groups[groupKey]) { groups[groupKey] = { label: groupLabel, items: [] }; groupOrder.push(groupKey); }
+      groups[groupKey].items.push({ art, clause });
+    });
+
+    // Sort into a fixed reading order (rather than "whichever appeared first"), so a
+    // domain page always reads Powers -> Duties -> Rights -> Limits -> Procedure -> ...
+    const TYPOLOGY_ORDER = ['substantive_power', 'duty_obligation', 'fundamental_right', 'checks_or_limits', 'ouster_immunity', 'procedural', 'creation_or_definition', 'declaratory_policy', 'definitional_interpretative', 'transitional_validation'];
+    const THEME_ORDER = Object.keys(ENUM_THEME);
+    const fixedOrder = groupByTypology ? TYPOLOGY_ORDER : THEME_ORDER;
+    groupOrder.sort((a, b) => fixedOrder.indexOf(a) - fixedOrder.indexOf(b));
+
+    groupOrder.forEach(gKey => {
+      const group = groups[gKey];
+      html += `<div class="category-group"><div class="category-header">${group.label} <span style="font-weight:400; text-transform:none; letter-spacing:0;">(${group.items.length})</span></div>`;
+      group.items.forEach(({ art, clause }) => {
+        const refStr = `Art. ${art.article_number}${clause.id !== '0' ? `(${clause.id})` : ''}`;
+        const bulletLine = clause.index_bullet || (clause.text.slice(0, 95) + '…');
+        html += `
+          <div class="provision-bullet" onclick="setPreviousView('tag', '${tagType}', '${tagKey}', '${tagLabel}'); renderArticleView('${art.article_number}', '${clause.id}')">
+            <span class="provision-ref">${refStr}</span>
+            <span class="provision-text">${bulletLine}</span>
+          </div>`;
+      });
+      html += `</div>`;
+    });
   }
 
   main.innerHTML = html;

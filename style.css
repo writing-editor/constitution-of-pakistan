@@ -96,7 +96,16 @@ body { background: var(--bg); color: var(--text-main); font-family: var(--font-s
 .ent-item.active { color: var(--active); font-weight: 600; border-left-color: var(--active); background: var(--active-bg); }
 .ent-item.child { padding-left: 38px; font-size: 12.5px; }
 .ent-count { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.art-num-pill { font-size: 11px; font-weight: 600; min-width: 42px; color: var(--text-faint); }
+.art-num-pill { font-size: 11px; font-weight: 600; min-width: 42px; color: var(--text-faint); flex-shrink: 0; }
+
+.art-row { align-items: flex-start; padding-top: 9px; padding-bottom: 9px; }
+.art-row-title {
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.art-row-purpose {
+  display: block; font-size: 11px; color: var(--text-faint); line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+}
 
 /* Main Content Area */
 #main { overflow-y: auto; height: 100%; }
