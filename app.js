@@ -322,12 +322,8 @@ function renderPreambleView() {
         // Clean Dedication/Title Banner
         html += `<div class="preamble-invocation">${seg.text.replace(/\n/g, '<br>')}</div>`;
       } else {
-        // Clean Paragraph formatting: p1 -> Paragraph 1, etc.
-        const numMatch = segId.match(/\d+/);
-        const paraNumber = numMatch ? numMatch[0] : segId.toUpperCase();
         html += `
           <div class="preamble-segment-card">
-            <span class="preamble-para-badge">Paragraph ${paraNumber}</span>
             <div class="preamble-para-text">${seg.text}</div>
           </div>
         `;
