@@ -89,7 +89,7 @@ async function initializeApp() {
 
 function switchSidebarTab(tabName) {
   CURRENT_TAB = tabName;
-  ['entities', 'typologies', 'themes', 'articles'].forEach(t => {
+  ['entities', 'typologies', 'amendments', 'articles'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('active', tabName === t);
   });
   buildSidebar(document.getElementById('global-search').value);
@@ -132,6 +132,105 @@ function highlightSidebarItem(id) {
     const el = document.querySelector(`.ent-item[data-id="${id}"], .pinned-item[id="${id}"]`);
     if(el) el.classList.add('active');
   }
+}
+
+// Maps an "Act No. N of YYYY" style Pakistani legislative act number to the constitutional
+// amendment number it corresponds to. The two numbering systems (act-of-year vs amendment
+// ordinal) don't share a formula, so this is a lookup rather than a calculation. Extend this
+// list if the sidebar still shows an "Act No. X of YYYY" row unmerged with its amendment.
+// These functions rely on the "amendment_number" / "amendment_label" fields added by
+// add_amendment_ids.py (run once against constitution_of_pakistan.json). Grouping now
+// reads that pre-resolved number directly instead of guessing from the raw "act" text
+// in the browser — the raw "act" string is still shown in the change notes below,
+// exactly as printed, since add_amendment_ids.py never modifies it.
+
+function getAllAmendmentActs() {
+  // Group by the numeric amendment_number where present; unnumbered historical
+  // instruments (Presidential Orders, footnotes) group by amendment_label instead.
+  const map = {}; // groupKey -> { label, number, articleNums: Set }
+  MASTER_DATA.articles.forEach(art => {
+    (art.article_level_amendments_summary || []).forEach(am => {
+      if (am.amendment_number == null && !am.amendment_label) return; // unresolved, skip
+      const gKey = am.amendment_number != null ? `amend_no_${am.amendment_number}` : `amend_lbl_${am.amendment_label}`;
+      if (!map[gKey]) map[gKey] = { label: am.amendment_label || `Amendment ${am.amendment_number}`, number: am.amendment_number, articleNums: new Set() };
+      map[gKey].articleNums.add(art.article_number);
+    });
+  });
+  return Object.entries(map)
+    .map(([groupKey, entry]) => ({ groupKey, label: entry.label, number: entry.number, count: entry.articleNums.size }))
+    .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
+}
+
+function getArticlesForAmendmentAct(groupKey) {
+  const results = [];
+  MASTER_DATA.articles.forEach(art => {
+    const hits = (art.article_level_amendments_summary || []).filter(am => {
+      const key = am.amendment_number != null ? `amend_no_${am.amendment_number}` : (am.amendment_label ? `amend_lbl_${am.amendment_label}` : null);
+      return key === groupKey;
+    });
+    if (hits.length) results.push({ art, hits });
+  });
+  return results;
+}
+
+// Researched, plain-English summaries of what each numbered constitutional Amendment
+// actually did, written from public web sources (news coverage, legal commentary,
+// Wikipedia) as of research done in August 2026. These are NOT part of the underlying
+// constitution_of_pakistan.json dataset and are not sourced from the PDF — they live
+// here in the app only, and are shown to the user with a clear "researched from public
+// sources" label so this is never mistaken for the project's verified legal data.
+const AMENDMENT_RESEARCHED_SUMMARY = {
+  1: "Passed in 1974, shortly after the loss of East Pakistan. It updated the constitution's description of Pakistan's territory to remove references to the former East Pakistan, and made related technical adjustments to articles covering political parties and federal boundaries.",
+  2: "Passed in 1974 amid sustained public and religious pressure. It formally defined who counts as a \"Muslim\" for constitutional purposes and declared members of the Ahmadiyya community to be a non-Muslim minority.",
+  3: "Passed in 1975. It extended how long a person could be held in preventive detention without trial, lengthening the permitted period from one month to three.",
+  4: "Passed in 1975. It added reserved seats for religious minorities in the legislature, while also narrowing the courts' power to grant bail to people held under preventive detention.",
+  5: "Passed in 1976. It placed further restrictions on the powers of the High Courts, including their jurisdiction over certain detention and government matters.",
+  6: "Passed in 1976. It fixed the retirement age for the Chief Justices of the Supreme Court and High Courts, standardizing how long they could serve.",
+  7: "Passed in 1977, shortly before the imposition of martial law. It let the Prime Minister seek a national referendum-style vote of confidence directly from the public.",
+  8: "Passed in 1985 under military rule, formally ending the Zia-era martial law period. Its most consequential change was Article 58(2)(b), which gave the President the power to unilaterally dissolve the National Assembly and dismiss an elected government — turning Pakistan's system from a parliamentary one into a semi-presidential one. This power was used several times through the 1990s to dismiss elected governments before being removed by the 13th Amendment and later reinstated and finally removed again by the 18th Amendment.",
+  10: "Passed in 1987. It set a maximum gap allowed between sessions of the National Assembly, requiring the legislature to meet more regularly.",
+  12: "Passed in 1991. It created special \"Speedy Trial\" courts, intended to be a temporary three-year measure for handling serious crimes more quickly.",
+  16: "Passed in 1999. It extended the time period for provincial and job quotas set out in the constitution.",
+  17: "Passed in 2003 under President Pervez Musharraf. It formally wrote several of Musharraf's earlier executive-order changes into the constitution, including provisions affecting the President's powers and the political party system.",
+  18: "Passed in 2010 and one of the most far-reaching amendments to date. It removed the President's Article 58(2)(b) power to unilaterally dissolve Parliament, restoring a fully parliamentary system with the Prime Minister as chief executive. It significantly increased provincial autonomy by abolishing the \"Concurrent Legislative List\" (subjects both federal and provincial governments could legislate on) and devolving areas like education and health to the provinces. It also created a Judicial Commission to handle judge appointments, added new fundamental rights including the right to education, and repealed most of the powers added by the earlier 8th and 17th Amendments.",
+  19: "Passed in late 2010, shortly after the 18th Amendment, largely to address concerns the Supreme Court had raised about it. It refined the process for appointing judges to the Supreme Court and High Courts.",
+  20: "Passed in 2012 ahead of general elections. It focused on strengthening the neutrality and independence of caretaker governments and the Election Commission, aiming for freer and fairer elections.",
+  22: "Passed in 2016. It adjusted the powers and composition of the Election Commission of Pakistan, including how the Chief Election Commissioner's authority relates to the rest of the Commission.",
+  23: "Passed in 2017. It re-established military courts for trying terrorism-related cases, extending a system that had first been created (and allowed to lapse) after the 2014 Peshawar school attack.",
+  24: "Passed in late 2017. It reallocated National Assembly seats among the provinces based on updated census results, and adjusted rules for elections following delimitation changes.",
+  25: "Passed in 2018. It merged the Federally Administered Tribal Areas (FATA) into the neighboring province of Khyber Pakhtunkhwa, ending FATA's separate semi-autonomous status and extending regular provincial law and courts to the region.",
+  26: "Passed in October 2024 in a fast-moving overnight legislative session, and widely referred to as the \"constitutional package.\" It restructured how judges are appointed by changing the composition of the Judicial Commission of Pakistan to include more parliamentarians alongside judges, set a fixed three-year term for the Chief Justice of Pakistan (selected by the Prime Minister from the three most senior judges, rather than automatically by seniority), removed the Supreme Court's power to take up cases on its own initiative (\"suo motu\"), and created special \"constitutional benches\" within the Supreme Court and High Courts to hear constitutional cases. Supporters described it as accountability reform; critics, including international legal bodies, said it gave the executive and legislature significant new influence over the judiciary.",
+  27: "Passed in November 2025, about a year after the 26th Amendment, and described by critics as an even more sweeping restructuring of the judiciary and military command. It created an entirely new Federal Constitutional Court (FCC) that takes over the Supreme Court's role in constitutional interpretation, federal-provincial disputes, and fundamental rights cases — leaving the Supreme Court as mainly an appellate court for non-constitutional matters. It abolished the Supreme Court's remaining suo motu powers. It also restructured the military's top command by creating a Chief of Defence Forces role, and extended legal immunity protections to senior military leadership similar to those the President already holds. The amendment passed with the required two-thirds parliamentary majority, but prompted the resignation of two senior Supreme Court judges in protest and has faced legal challenges in multiple High Courts."
+};
+
+function buildAmendmentAutoSummary(groupKey, entries) {
+  // No single hand-written "summary" field exists per amendment, so this builds a
+  // stand-in from what IS there: how many articles/clauses it touched, and which
+  // subject areas those articles belong to.
+  const articleCount = entries.length;
+  let clauseCount = 0;
+  const themeCounts = {};
+  entries.forEach(({ art, hits }) => {
+    clauseCount += hits.length;
+    const themes = new Set();
+    (art.clauses || []).forEach(function walk(c) {
+      (c.clause_theme || []).forEach(t => themes.add(t));
+      (c.children || []).forEach(walk);
+    });
+    themes.forEach(t => { themeCounts[t] = (themeCounts[t] || 0) + 1; });
+  });
+  const topThemes = Object.entries(themeCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([key]) => ENUM_THEME[key] || key);
+
+  const articleWord = articleCount === 1 ? 'article' : 'articles';
+  const changeWord = clauseCount === 1 ? 'change' : 'changes';
+  let text = `This amendment touched ${articleCount} ${articleWord} across the constitution, recording ${clauseCount} distinct ${changeWord}.`;
+  if (topThemes.length) {
+    text += ` Its impact concentrates mainly in ${topThemes.join(', ')}.`;
+  }
+  return text;
 }
 
 function createSectionHeader(container, title) {
@@ -187,20 +286,52 @@ function buildSidebar(filterText = '') {
     renderGroup('Institutions & Offices', topEntities.filter(e => e.type === 'institution'));
     renderGroup('Protected Classes & Rights', topEntities.filter(e => e.type === 'protected_class'));
 
-  } else if (CURRENT_TAB === 'typologies' || CURRENT_TAB === 'themes') {
-    const enumMap = CURRENT_TAB === 'typologies' ? ENUM_TYPOLOGY : ENUM_THEME;
-    const tagType = CURRENT_TAB === 'typologies' ? 'typology' : 'theme';
-    
-    Object.entries(enumMap).forEach(([key, label]) => {
+  } else if (CURRENT_TAB === 'typologies') {
+    Object.entries(ENUM_TYPOLOGY).forEach(([key, label]) => {
       if (q && !label.toLowerCase().includes(q)) return;
-      const count = getClausesByTag(tagType, key).length;
+      const count = getClausesByTag('typology', key).length;
       const el = document.createElement('div');
       el.className = `ent-item`; 
       el.dataset.id = key;
       el.innerHTML = `<span>${label}</span><span class="ent-count">${count}</span>`;
-      el.onclick = () => renderTagView(tagType, key, label);
+      el.onclick = () => renderTagView('typology', key, label);
       container.appendChild(el);
     });
+
+  } else if (CURRENT_TAB === 'amendments') {
+    const acts = getAllAmendmentActs();
+    if (!acts.length) {
+      const empty = document.createElement('div');
+      empty.className = 'sidebar-section-title';
+      empty.textContent = 'No amendments recorded yet';
+      container.appendChild(empty);
+    }
+
+    function renderAmendRow(entry) {
+      const { groupKey, label, count } = entry;
+      if (q && !label.toLowerCase().includes(q)) return;
+      const el = document.createElement('div');
+      el.className = 'ent-item';
+      el.dataset.id = `amend_${groupKey}`;
+      el.innerHTML = `<span>${label}</span><span class="ent-count">${count}</span>`;
+      el.onclick = () => renderAmendmentView(groupKey, label);
+      container.appendChild(el);
+    }
+
+    // Numbered constitutional Amendments (passed via the normal legislative process) are
+    // shown separately from martial-law-era Presidential Orders and other instruments,
+    // since the two are legally and historically distinct kinds of change.
+    const numbered = acts.filter(a => a.number != null);
+    const other = acts.filter(a => a.number == null);
+
+    if (numbered.length) {
+      createSectionHeader(container, 'Constitutional Amendments');
+      numbered.forEach(renderAmendRow);
+    }
+    if (other.length) {
+      createSectionHeader(container, 'Presidential Orders & Other Instruments');
+      other.forEach(renderAmendRow);
+    }
 
   } else if (CURRENT_TAB === 'articles') {
     let currentChapter = '';
@@ -235,6 +366,7 @@ function handleBackNavigation() {
   if (!PREVIOUS_VIEW) { renderDashboard(); return; }
   if (PREVIOUS_VIEW.type === 'entity') renderEntityView(PREVIOUS_VIEW.id);
   else if (PREVIOUS_VIEW.type === 'tag') renderTagView(PREVIOUS_VIEW.tagType, PREVIOUS_VIEW.id, PREVIOUS_VIEW.label);
+  else if (PREVIOUS_VIEW.type === 'amendment') renderAmendmentView(PREVIOUS_VIEW.id, PREVIOUS_VIEW.label);
   else if (PREVIOUS_VIEW.type === 'preamble') renderPreambleView();
   else renderDashboard();
 }
@@ -420,6 +552,82 @@ function renderTagView(tagType, tagKey, tagLabel) {
   document.getElementById('main').scrollTop = 0;
 }
 
+function renderAmendmentView(groupKey, displayName) {
+  PREVIOUS_VIEW = { type: 'dashboard' };
+  CURRENT_ACTIVE_ID = `amend_${groupKey}`;
+  highlightSidebarItem(`amend_${groupKey}`);
+
+  const main = document.getElementById('main-inner');
+  const entries = getArticlesForAmendmentAct(groupKey);
+  const autoSummary = buildAmendmentAutoSummary(groupKey, entries);
+  const amendmentNumberMatch = groupKey.match(/^amend_no_(\d+)$/);
+  const amendmentNumber = amendmentNumberMatch ? parseInt(amendmentNumberMatch[1], 10) : null;
+  const researched = amendmentNumber != null ? AMENDMENT_RESEARCHED_SUMMARY[amendmentNumber] : null;
+
+  let html = `
+    <div class="breadcrumb"><a class="back-btn" onclick="handleBackNavigation()">← Dashboard</a><span class="sep">/</span><span>Amendment</span></div>
+    <h1 class="page-title">${displayName}</h1>
+    ${researched ? `
+    <div class="summary-card">
+      <div class="layman">${researched}</div>
+      <div style="font-family:var(--font-sans); font-size:11px; color:var(--text-faint); margin-top:10px;">Researched from public news and legal-commentary sources, not from the constitution dataset itself — treat as a general overview rather than a verified legal citation.</div>
+    </div>` : ''}
+    <div class="summary-card" style="${researched ? 'background:var(--bg-card);' : ''}">
+      <div class="layman">${autoSummary}</div>
+      <div style="font-family:var(--font-sans); font-size:11px; color:var(--text-faint); margin-top:10px;">This overview is calculated from the recorded article changes below — it is not a hand-written legal summary.</div>
+    </div>
+    <div class="category-header">What Changed, By Subject Area</div>
+  `;
+
+  if (!entries.length) {
+    html += `<div class="empty-state"><p>No articles are recorded against this amendment yet.</p></div>`;
+  } else {
+    // Group affected articles by their dominant subject theme, so a reader sees at a
+    // glance which parts of the constitution this amendment reshaped (e.g. mostly
+    // "The Executive" and "Federalism & Devolution") instead of one flat article list.
+    function dominantTheme(art) {
+      const counts = {};
+      (art.clauses || []).forEach(function walk(c) {
+        (c.clause_theme || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+        (c.children || []).forEach(walk);
+      });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      return sorted.length ? sorted[0][0] : 'meta_law_interpretation';
+    }
+
+    const groups = {};
+    const groupOrder = [];
+    entries.forEach(entry => {
+      const themeKey = dominantTheme(entry.art);
+      const themeLabel = ENUM_THEME[themeKey] || 'Other';
+      if (!groups[themeKey]) { groups[themeKey] = { label: themeLabel, items: [] }; groupOrder.push(themeKey); }
+      groups[themeKey].items.push(entry);
+    });
+
+    const THEME_ORDER = Object.keys(ENUM_THEME);
+    groupOrder.sort((a, b) => THEME_ORDER.indexOf(a) - THEME_ORDER.indexOf(b));
+
+    groupOrder.forEach(themeKey => {
+      const group = groups[themeKey];
+      html += `<div class="category-group"><div class="category-header">${group.label} <span style="font-weight:400; text-transform:none; letter-spacing:0;">(${group.items.length})</span></div>`;
+      group.items.forEach(({ art, hits }) => {
+        html += `
+          <div class="provision-bullet" style="align-items:flex-start; flex-direction:column; gap:6px;" onclick="setPreviousView('amendment', null, '${groupKey}', '${displayName.replace(/'/g, "\\'")}'); renderArticleView('${art.article_number}')">
+            <div style="display:flex; align-items:baseline; gap:14px; width:100%;">
+              <span class="provision-ref">Art. ${art.article_number}</span>
+              <span class="provision-text" style="font-weight:600;">${art.original_title || ''}</span>
+            </div>
+            ${hits.map(h => `<div style="font-size:12.5px; color:var(--text-muted); margin-left:90px; line-height:1.5;">${h.clause ? `<span style="color:var(--text-faint);">Clause ${h.clause}:</span> ` : ''}${h.change}</div>`).join('')}
+          </div>`;
+      });
+      html += `</div>`;
+    });
+  }
+
+  main.innerHTML = html;
+  document.getElementById('main').scrollTop = 0;
+}
+
 function renderEntityView(entityId) {
   const entity = (MASTER_DATA.entities || []).find(e => e.id === entityId);
   if (!entity) return;
@@ -484,6 +692,7 @@ function renderArticleView(artNum, activeClauseId = null) {
   if (PREVIOUS_VIEW) {
     if (PREVIOUS_VIEW.type === 'entity') backLabel = (MASTER_DATA.entities || []).find(e => e.id === PREVIOUS_VIEW.id)?.name || 'Entity';
     else if (PREVIOUS_VIEW.type === 'tag') backLabel = PREVIOUS_VIEW.label;
+    else if (PREVIOUS_VIEW.type === 'amendment') backLabel = PREVIOUS_VIEW.label;
   }
 
   let html = `
